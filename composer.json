@@ -1,0 +1,22 @@
+{
+    "name": "nirjharlo/complete-google-seo-scan",
+    "type": "wordpress-plugin",
+    "description": "WordPress Plugin with inbuilt SEO crawler",
+    "keywords": ["wordpress","seo","crawler"],
+    "homepage": "https://github.com/nirjharlo/complete-google-seo-scan",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Nirjhar Lo",
+            "email": "hello@nirjharlo.com",
+            "homepage": "http://nirjharlo.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=7.3.0"
+    },
+    "autoload": {
+      "psr-4": {"NirjharLo\\Cgss\\": "./Plugin"}
+    }
+}

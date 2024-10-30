@@ -1,0 +1,237 @@
+<?php
+namespace NirjharLo\Cgss\Lib\Action;
+
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+
+/**
+ * Perform fetch insight action
+ */
+	final class Insight {
+
+
+		public function __construct() {
+
+			try{
+				$this->data = $this->fetch();
+				$this->compile();
+				$this->save();
+			} catch(Exception $e) {
+				echo __( 'Something went wrong', 'cgss') . ' ' . $e->get_message();
+			}
+		}
+
+
+		//DB insert function
+		public function save() {
+
+			global $wpdb;
+
+			$result = array(
+				$this->score,
+				$this->snippet,
+				$this->text,
+				$this->links,
+				$this->keywords,
+				$this->images,
+				$this->responsive,
+				$this->speed,
+				$this->social,
+			);
+			foreach ($result as $key => $value) {
+				$sql = $wpdb->prepare("UPDATE {$wpdb->prefix}cgss_insight SET remark = %s WHERE ID = %d", $value, ($key+1));
+				$update = $wpdb->query($sql);
+			}
+		}
+
+
+		//Compile the result
+		public function compile() {
+
+			$score = $this->data['score'];
+			$this->count = (count($score) == 0 ? 1 : count($score));
+			$avarage_score = (count($score) == 0 ? 0 : round(array_sum($score)/count($score), 0));
+
+			$this->score = sprintf(__('Avarage SEO score is %d out of 10', 'cgss'),$avarage_score);
+			$this->snippet = $this->snippet_analyze();
+			$this->text = $this->text_analyze();
+			$this->links = $this->link_analyze();
+			$this->keywords = $this->keyword_analyze();
+			$this->images = $this->image_analyze();
+			$this->responsive = $this->responsivity();
+			$this->speed = $this->speed_analyze();
+			$this->social = $this->social_analyze();
+		}
+
+
+		//Analyze snippets
+		public function snippet_analyze() {
+
+			$snippets = $this->data['snip'];
+			$snip_count = 0;
+			foreach ($snippets as $snippet) {
+				$title = $snippet['title'];
+				$desc = $snippet['desc'];
+				if (!empty($title) && !empty($desc)) {
+					$snip_count++;
+				}
+			}
+			$snip_fraction = $this->count - $snip_count;
+
+			$output = ($snip_fraction == 0) ? __( 'All snippets are ok', 'cgss' ) : sprintf(_n('%d page', '%d pages', $snip_fraction, 'cgss'), $snip_fraction) . ' ' . __( 'have incomplete snippets', 'cgss' );
+			return $output;
+		}
+
+
+		//Analyze text
+		public function text_analyze() {
+
+			$text = $this->data['text'];
+			$count = round(array_sum(array_column($text, 'count')) / $this->count, 0);
+			$ratio = round(array_sum(array_column($text, 'ratio')) / $this->count, 2);
+
+			$output = sprintf(__('Avarage', 'cgss') . ' ' . _n('%d word is','%d words are',$count,'cgss') . ' ' . __( 'found per page and avarage text to HTML ratio is %d', 'cgss'),$count,$ratio) . '%';
+			return $output;
+		}
+
+
+		// Analysis of links
+		public function link_analyze() {
+
+			$text = $this->data['text'];
+			$links = array_column($text, 'links');
+			$count = round(array_sum(array_column($links, 'count')) / $this->count, 0);
+			$external = round(array_sum(array_column($links, 'external')) / $this->count, 0);
+			$nofollow = round(array_sum(array_column($links, 'external')) / $this->count, 0);
+			$external_percentage = ($count == 0 ? 0 : round(($external/$count)*100, 0));
+			$nofollow_percentage = ($count == 0 ? 0 : round(($nofollow/$count)*100, 0));
+
+			$output = sprintf(__('Avarage', 'cgss') . ' '.  _n( '%d link is','%d links are', $count, 'cgss' ) . ' ' . __('found per page. %d&#37; are external and %d&#37; are nofollow among them.', 'cgss'),$count,$external_percentage,$nofollow_percentage);
+			return $output;
+		}
+
+
+		// Analyze keywords
+		public function keyword_analyze() {
+
+			$text = $this->data['text'];
+			$keywords = array_column($text, 'keys');
+
+			$key_collect = array();
+			$percent_collect = array();
+			foreach ($keywords as $keyword) {
+				$keys = (!empty($keyword) ? array_keys($keyword) : []);
+				$top_key = $keys[0];
+				$key_collect[] = count(explode(' ', $top_key));
+				$percent_collect[] = $keyword[$top_key];
+			}
+
+			$key_count = round(array_sum($key_collect) / $this->count, 1);
+			$percent = round(array_sum($percent_collect) / $this->count, 1);
+
+			$output = sprintf(__('Avarage foucs keyword is', 'cgss') . ' ' . _n( '%d word','%d words',$key_count, 'cgss' ) . ' ' . __('long. Keyword frequency of %d&#37;','cgss'),$key_count,$percent);
+
+			return $output;
+		}
+
+
+		// Analyze images
+		public function image_analyze() {
+
+			$design = $this->data['design'];
+			$images = array_column($design, 'image');
+
+			$image_count = array_sum(array_column($images, 'count'));
+			$no_alt_image = array_sum(array_column($images, 'no_alt_count'));
+
+			$avg_image = round(($image_count/$this->count), 0);
+
+			$output = sprintf(__('Avarage', 'cgss') . ' ' . _n( '%d image is', '%d images are', $avg_image, 'cgss' ) . ' ' . __( 'found per page.', 'cgss'),$avg_image) . ' ';
+			if ($no_alt_image == 0) {
+				$output .= ' ' . __('All of them are optimized', 'cgss');
+			} else {
+				$no_alt_percent = round(($no_alt_image/$image_count)*100, 0);
+				$output .= ' ' . sprintf(__('%d&#37; among them doesn\'t have alt tag', 'cgss'),$no_alt_percent);
+			}
+			return $output;
+
+		}
+
+
+		// Check mobile optimized
+		public function responsivity() {
+
+			$design = $this->data['design'];
+			$vport = array_sum(array_column($design, 'vport'));
+
+			if ($vport == $this->count) {
+				$output = __('All pages are mobile optimized', 'cgss');
+			} else {
+				$no_mobile_percent = round(($vport/$this->count)*100, 0);
+				$output = sprintf(__('%d&#37; pages aren\'t mobile optimized', 'cgss'),$no_mobile_percent);
+			}
+
+			return $output;
+		}
+
+
+		// Speed analyze
+		public function speed_analyze() {
+
+			$speed = $this->data['speed'];
+
+			$res_time = array_sum(array_column($speed, 'res_time'));
+			$down_time = array_sum(array_column($speed, 'down_time'));
+
+			$avg_res_time = round(($res_time/$this->count) * 1000, 0);
+			$avg_down_time = round(($down_time/$this->count) * 1000, 0);
+
+			$output = sprintf( __('Average response time is %d miliseconds and average download time is %d miliseconds', 'cgss'), $avg_res_time, $avg_down_time);
+
+			return $output;
+		}
+
+
+		// Count social shares
+		public function social_analyze() {
+
+			$social = $this->data['social'];
+
+			$fb_share = array_sum(array_column($social, 'fb_share'));
+			$fb_like = array_sum(array_column($social, 'fb_like'));
+
+			$output = sprintf( __('Total', 'cgss') . ': ' . _n( '%d share', '%d shares', $fb_share, 'cgss' ) . ' ' . __( 'in Facebook', 'cgss' ). ' | ' . _n( '%d Facebook like', '%d Facebook likes', $fb_like, 'cgss' ), $fb_share, $fb_like);
+
+			return $output;
+		}
+
+
+		//Fetch the scan results
+		public function fetch() {
+
+			global $wpdb;
+			$sql = "SELECT ID FROM {$wpdb->prefix}posts WHERE post_type!='attachment'";
+			$ids = $wpdb->get_results( $sql, 'ARRAY_A' );;
+
+			$data_piece = array();
+			foreach ($ids as $id) {
+
+				$meta = get_post_meta( $id['ID'], 'cgss_scan_result', true );
+				if ($meta) {
+					$data_piece[] = $meta;
+				}
+			}
+
+			$data = array();
+			$data['score'] = array_column($data_piece, 'score');
+			$data['snip'] = array_column($data_piece, 'snip');
+			$data['social'] = array_column($data_piece, 'social');
+			$data['text'] = array_column($data_piece, 'text');
+			$data['design'] = array_column($data_piece, 'design');
+			$data['crawl'] = array_column($data_piece, 'crawl');
+			$data['speed'] = array_column($data_piece, 'speed');
+			$data['social_tags'] = array_column($data_piece, 'social_tags');
+
+			return $data;
+		}
+	} ?>
